@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: Literal["local", "staging", "production"] = "production"
 
     # Upstream services
-    CONFIDENCE_TUNNING_URL: str = "http://localhost:8003"
+    CONFIDENCE_TUNING_URL: str = "http://localhost:8003"
     VECTOR_OPERATION_URL: str = "http://localhost:8002"
 
     # Sync pagination

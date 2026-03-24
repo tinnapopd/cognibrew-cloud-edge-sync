@@ -93,7 +93,7 @@ scripts/
 ```bash
 docker build -t cognibrew-sync .
 docker run --name cognibrew-sync \
-  -e CONFIDENCE_TUNNING_URL=http://confidence:8003 \
+  -e CONFIDENCE_TUNING_URL=http://confidence:8003 \
   -e VECTOR_OPERATION_URL=http://vector:8002 \
   -e ENVIRONMENT=local \
   -p 8000:8000 \
@@ -140,7 +140,10 @@ See [`.env.example`](.env.example) for all available configuration options.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ENVIRONMENT` | `production` | `local`, `staging`, or `production` |
-| `CONFIDENCE_TUNNING_URL` | `http://localhost:8003` | Confidence Tuning service URL |
-| `VECTOR_OPERATION_URL` | `http://localhost:8002` | Vector Operation service URL |
+| `LOG_LEVEL` | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `ENVIRONMENT` | `local` | Runtime environment: `local`, `staging`, or `production` |
+| `API_PREFIX_STR` | `/api/v1` | API route prefix |
+| `PROJECT_NAME` | `CogniBrew Edge Sync` | Application name shown in docs |
+| `CONFIDENCE_TUNING_URL` | `http://confidence-tuning:8003` | Confidence Tuning service URL |
+| `VECTOR_OPERATION_URL` | `http://vector-operation:8002` | Vector Operation service URL |
 | `SYNC_PAGE_SIZE` | `50` | Default number of users per bundle page |

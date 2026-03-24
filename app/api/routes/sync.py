@@ -73,7 +73,7 @@ async def get_bundle(
         # 1. Get latest threshold
         try:
             resp = await client.get(
-                f"{settings.CONFIDENCE_TUNNING_URL}/confidence/latest"
+                f"{settings.CONFIDENCE_TUNING_URL}/confidence/latest"
             )
             resp.raise_for_status()
             threshold_data = resp.json()
