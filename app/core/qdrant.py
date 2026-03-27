@@ -9,7 +9,6 @@ from qdrant_client.models import (
     Filter,
     MatchValue,
     PointStruct,
-    Range,
     VectorParams,
 )
 
@@ -19,30 +18,16 @@ from app.core.logger import Logger
 logger = Logger().get_logger()
 
 
-def _device_filter(device_id: str, since: Optional[str] = None) -> Filter:
-    """
-    Return a Qdrant filter for device_id, optionally scoped to date >= since.
-
-    Args:
-        device_id: The device to filter for.
-        since: Optional date string (YYYY-MM-DD). When provided only points
-            with ``date >= since`` are matched.
-    """
-    conditions = [
-        FieldCondition(
-            key="device_id",
-            match=MatchValue(value=device_id),
-        )
-    ]
-    if since:
-        conditions.append(
+def _device_filter(device_id: str) -> Filter:
+    """Return a Qdrant filter for device_id."""
+    return Filter(
+        must=[
             FieldCondition(
-                key="date",
-                range=Range(gte=since),
+                key="device_id",
+                match=MatchValue(value=device_id),
             )
-        )
-
-    return Filter(must=conditions)
+        ]
+    )
 
 
 def init_collection(*, client: QdrantClient) -> None:
@@ -91,7 +76,7 @@ def get_vectors_by_device_id(
     while True:
         points, next_offset = client.scroll(
             collection_name=settings.QDRANT_COLLECTION,
-            scroll_filter=_device_filter(device_id, since=since),
+            scroll_filter=_device_filter(device_id),
             limit=100,
             offset=offset,
             with_vectors=True,
@@ -99,6 +84,10 @@ def get_vectors_by_device_id(
         for point in points:
             payload = point.payload
             if payload is None:
+                continue
+
+            # Filter by date in Python (payload date is a string)
+            if since and payload.get("date", "") < since:
                 continue
 
             results.append(
