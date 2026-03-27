@@ -17,4 +17,4 @@ RUN chmod +x scripts/prestart.sh
 
 EXPOSE 8000
 
-CMD ["bash", "-c", "./scripts/prestart.sh && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
