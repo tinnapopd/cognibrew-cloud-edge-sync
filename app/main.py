@@ -4,9 +4,11 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
+from app.api.deps import client as qdrant_client
 from app.api.main import api_router
 from app.core.config import settings
 from app.core.logger import Logger
+from app.core.qdrant import init_collection
 
 logger = Logger().get_logger()
 
@@ -17,6 +19,16 @@ def custom_generate_unique_id(route: APIRoute) -> str:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    # Ensure the Qdrant collection exists before serving requests
+    try:
+        init_collection(client=qdrant_client)
+        logger.info("Qdrant collection ready")
+    except Exception:
+        logger.exception(
+            "Failed to initialise Qdrant collection — "
+            "the service will attempt to connect on first request"
+        )
+
     logger.info("Edge Sync ready — serving bundles via pull")
     yield
 

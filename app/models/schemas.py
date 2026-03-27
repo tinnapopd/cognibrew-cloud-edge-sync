@@ -1,10 +1,20 @@
 from pydantic import BaseModel, Field
 
 
-class SyncBundle(BaseModel):
-    """Bundle returned to Edge devices when they pull updates."""
+class SyncUpdateRequest(BaseModel):
+    device_id: str
+    threshold: float
+    username: str
+    embedding: list[float]
 
-    version: int
+
+class SyncUpdateResponse(BaseModel):
+    status: str = "ok"
+    device_id: str
+    username: str
+
+
+class SyncBundle(BaseModel):
     threshold: float
     gallery: dict[str, list[list[float]]] = Field(
         default_factory=dict,
@@ -14,12 +24,3 @@ class SyncBundle(BaseModel):
     has_more: bool = Field(
         False, description="True if more pages are available"
     )
-
-
-class SyncStatus(BaseModel):
-    """Current sync service status."""
-
-    last_served_at: str | None = None
-    last_version: int | None = None
-    last_threshold: float | None = None
-    total_requests_served: int = 0

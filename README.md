@@ -1,41 +1,63 @@
 # CogniBrew Cloud Edge Sync
 
-Aggregates optimal threshold and vector gallery from upstream cloud services. Edge devices pull sync bundles via a paginated REST API.
+Receives optimal thresholds and vector galleries from the Airflow pipeline and persists them in [Qdrant](https://qdrant.tech/). Edge devices pull sync bundles via a paginated REST API.
 
 ## Architecture
 
 ```
-Edge Device ──poll──▶ Edge Sync ──fetch──▶ Confidence Tuning
-                         │                  (threshold + version)
-                         └──────fetch──▶ Vector Operation
-                                          (user galleries)
+Airflow Pipeline (a single vector) --> POST /sync/update --> Edge Sync <-- GET /sync/bundle <-- Edge Device (pull loop)
 ```
 
-Edge devices periodically call `GET /sync/bundle` to pull the latest data — the cloud never pushes.
+The pipeline pushes per-user embeddings and thresholds; the service stores them as vectors in Qdrant. Edge devices pull bundles on their own schedule with built-in pagination.
 
 ## API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/v1/sync/bundle` | Pull latest threshold + gallery bundle (paginated) |
-| `GET` | `/api/v1/sync/status` | Sync service status |
+| `POST` | `/api/v1/sync/update` | Receive threshold + vector from pipeline and persist to Qdrant |
+| `GET` | `/api/v1/sync/bundle` | Pull latest threshold + gallery bundle (paginated, optional `since` filter) |
 | `GET` | `/api/v1/utils/health-check/` | Health check |
 
-### Pull Sync Bundle
+### Push Sync Update (Pipeline → Edge Sync)
 
 ```bash
-# First page
-curl "http://localhost:8000/api/v1/sync/bundle?current_version=0&offset=0&limit=50"
-
-# Next page (if has_more=true)
-curl "http://localhost:8000/api/v1/sync/bundle?current_version=0&offset=50&limit=50"
+curl -X POST "http://localhost:8000/api/v1/sync/update" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "device_id": "device-001",
+    "threshold": 0.82,
+    "username": "alice",
+    "embedding": [0.1, 0.2, 0.3]
+  }'
 ```
 
 **Response:**
 
 ```json
 {
-  "version": 5,
+  "status": "ok",
+  "device_id": "device-001",
+  "username": "alice"
+}
+```
+
+### Pull Sync Bundle (Edge Device ← Edge Sync)
+
+```bash
+# First page
+curl "http://localhost:8000/api/v1/sync/bundle?device_id=device-001&offset=0&limit=50"
+
+# With date filter (only vectors processed on or after the given date)
+curl "http://localhost:8000/api/v1/sync/bundle?device_id=device-001&offset=0&limit=50&since=2026-03-01"
+
+# Next page (if has_more=true)
+curl "http://localhost:8000/api/v1/sync/bundle?device_id=device-001&offset=50&limit=50"
+```
+
+**Response:**
+
+```json
+{
   "threshold": 0.82,
   "gallery": {
     "alice": [[0.1, 0.2, ...]],
@@ -51,15 +73,14 @@ curl "http://localhost:8000/api/v1/sync/bundle?current_version=0&offset=50&limit
 ```python
 offset = 0
 while True:
-    resp = httpx.get(
+    resp = requests.get(
         f"{SYNC_URL}/api/v1/sync/bundle",
-        params={"current_version": local_version, "offset": offset, "limit": 50},
+        params={"device_id": DEVICE_ID, "offset": offset, "limit": 50},
     )
     bundle = resp.json()
     if bundle["users_synced"] > 0:
         apply_update(bundle)
     if not bundle["has_more"]:
-        local_version = bundle["version"]
         break
     offset += 50
 ```
@@ -68,15 +89,26 @@ while True:
 
 ```
 .github/workflows/
-└── ci.yml          # Lint + Docker build & push
+└── ci.yml              # Lint + Docker build & push
 app/
-├── api/            # Route handlers
-├── core/           # Config & logging
-├── models/         # Pydantic schemas
-├── main.py         # FastAPI application
-└── pre_start.py    # Pre-startup script
+├── api/
+│   ├── deps.py         # QdrantClient dependency injection (QdrantDep)
+│   ├── main.py         # API router aggregation
+│   └── routes/
+│       ├── sync.py     # POST /sync/update, GET /sync/bundle
+│       └── utils.py    # GET /utils/health-check
+├── core/
+│   ├── config.py       # Pydantic Settings (env-driven configuration)
+│   ├── logger.py       # Singleton JSON logger (python-json-logger)
+│   ├── qdrant.py       # Collection init, vector CRUD (insert, scroll, filter)
+│   └── security.py     # Security utilities
+├── models/
+│   └── schemas.py      # Pydantic request/response schemas
+├── main.py             # FastAPI app with lifespan (Qdrant collection init)
+└── pre_start.py        # Pre-startup script
 scripts/
-└── prestart.sh     # Docker container pre-start hook
+├── init_qdrant.sh      # Launch local Qdrant via Docker, wait for readiness
+└── prestart.sh         # Docker container pre-start hook
 ```
 
 ## Development Setup
@@ -86,6 +118,16 @@ scripts/
 - Docker
 - Python 3.10+
 
+### Start Qdrant
+
+Use the provided helper script to launch a local Qdrant instance:
+
+```bash
+./scripts/init_qdrant.sh
+```
+
+> Set `SKIP_DOCKER=1` if Qdrant is already running.
+
 ### Run the API
 
 **With Docker:**
@@ -93,9 +135,8 @@ scripts/
 ```bash
 docker build -t cognibrew-sync .
 docker run --name cognibrew-sync \
-  -e CONFIDENCE_TUNING_URL=http://confidence:8003 \
-  -e VECTOR_OPERATION_URL=http://vector:8002 \
   -e ENVIRONMENT=local \
+  -e QDRANT_HOST=host.docker.internal \
   -p 8000:8000 \
   cognibrew-sync
 ```
@@ -140,10 +181,12 @@ See [`.env.example`](.env.example) for all available configuration options.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LOG_LEVEL` | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
-| `ENVIRONMENT` | `local` | Runtime environment: `local`, `staging`, or `production` |
+| `LOG_LEVEL` | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) |
+| `ENVIRONMENT` | `production` | Runtime environment: `local`, `staging`, or `production` |
 | `API_PREFIX_STR` | `/api/v1` | API route prefix |
 | `PROJECT_NAME` | `CogniBrew Edge Sync` | Application name shown in docs |
-| `CONFIDENCE_TUNING_URL` | `http://confidence-tuning:8003` | Confidence Tuning service URL |
-| `VECTOR_OPERATION_URL` | `http://vector-operation:8002` | Vector Operation service URL |
 | `SYNC_PAGE_SIZE` | `50` | Default number of users per bundle page |
+| `QDRANT_HOST` | `localhost` | Qdrant server hostname |
+| `QDRANT_PORT` | `6334` | Qdrant gRPC port |
+| `QDRANT_COLLECTION` | `sync_collection` | Qdrant collection name |
+| `EMBEDDING_DIM` | `512` | Dimensionality of face embeddings |
