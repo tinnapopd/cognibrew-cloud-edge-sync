@@ -13,12 +13,14 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "CogniBrew Edge Sync"
     ENVIRONMENT: Literal["local", "staging", "production"] = "production"
 
-    # Upstream services
-    CONFIDENCE_TUNING_URL: str = "http://localhost:8003"
-    VECTOR_OPERATION_URL: str = "http://localhost:8002"
-
     # Sync pagination
     SYNC_PAGE_SIZE: int = 50
+
+    # Qdrant
+    QDRANT_HOST: str = "localhost"
+    QDRANT_PORT: int = 6334
+    QDRANT_COLLECTION: str = "sync_collection"
+    EMBEDDING_DIM: int = 512
 
 
 settings = Settings()  # type: ignore
