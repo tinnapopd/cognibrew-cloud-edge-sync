@@ -1,7 +1,21 @@
-# No shared dependencies needed for this service.
-# This sync service aggregates threshold + gallery and pushes to Edge devices.
-#
-# Add dependencies here if needed in the future, e.g.:
-#   - Database sessions
-#   - Authentication / authorization
-#   - Shared httpx client
+from collections.abc import Generator
+from typing import Annotated
+
+from fastapi import Depends
+from qdrant_client import QdrantClient
+
+from app.core.config import settings
+
+client = QdrantClient(
+    host=settings.QDRANT_HOST,
+    port=settings.QDRANT_PORT,
+    prefer_grpc=True,
+)
+
+
+def get_qdrant() -> Generator[QdrantClient, None, None]:
+    yield client
+
+
+# Dependency for FastAPI
+QdrantDep = Annotated[QdrantClient, Depends(get_qdrant)]
