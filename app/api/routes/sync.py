@@ -95,7 +95,7 @@ async def get_bundle(
         gallery[username].append(vec["embedding"])
         threshold += vec["threshold"]
 
-    avg_threshold = threshold / len(vectors)
+    avg_threshold = threshold / len(vectors) if vectors else 0.5
 
     # Paginate users
     usernames = sorted(gallery.keys())
